@@ -4,6 +4,7 @@
 // and lists only what the upgrade touches. Nothing here is a new detector; it reorganizes what
 // analyze() already found so the upgrade story is the headline, not a buried low finding.
 import { NEXT, EXPO_RN, CHANGES } from './upcoming.js';
+import { CONTACT_EMAIL } from './config.js';
 
 const minorOf = (v) => (v ? Number(String(v).split('.')[1]) : null);
 const majorOf = (v) => (v ? Number(String(v).split('.')[0]) : null);
@@ -42,7 +43,14 @@ export function upgradeReport(result) {
   const upcoming = find('upcoming-changes');
   const changes = (upcoming && upcoming.fix && upcoming.fix.changes) || [];
   const libCompile = changes.filter((c) => c.id === 'rn87-bare-includes');
-  const codeBreaks = changes.filter((c) => c.kind === 'removed' && c.id !== 'rn87-bare-includes');
+  // A change can be in the app's own code, in a dependency, or both: each is its own blocker.
+  const codeBreaks = changes.filter((c) => c.kind === 'removed' && c.id !== 'rn87-bare-includes' && c.hits.length);
+  // A library that crashes (InteractionManager, the StatusBar setters) blocks the upgrade. One that
+  // uses absoluteFillObject only breaks the layout of the components named, which the app may not
+  // use: that is for review, not a blocker.
+  const SILENT_IN_LIBRARY = new Set(['rn85-absolute-fill-object']);
+  const libraryBreaks = changes.filter((c) => c.kind === 'removed' && (c.libraries || []).length && !SILENT_IN_LIBRARY.has(c.id));
+  const libraryReviews = changes.filter((c) => c.kind === 'removed' && (c.libraries || []).length && SILENT_IN_LIBRARY.has(c.id));
   const behavior = changes.filter((c) => c.kind === 'behavior');
   const tooling = changes.filter((c) => c.kind === 'tooling');
 
@@ -55,12 +63,14 @@ export function upgradeReport(result) {
 
   const blockers = [];
   for (const c of codeBreaks) blockers.push({ kind: 'code', title: c.title, where: c.hits, action: c.action, version: c.version, source: c.source });
+  for (const c of libraryBreaks) blockers.push({ kind: 'library-js', title: `${c.title}, and a dependency still uses it`, where: c.libraries, action: 'Update the library if a release fixes it; until then patch it (patch-package). A fix in your own code does not cover it.', version: c.version, source: c.source });
   for (const c of libCompile) blockers.push({ kind: 'library-ios-build', title: c.title, where: c.hits, action: c.action, version: c.version, source: c.source });
   for (const f of interop) blockers.push({ kind: 'library-interop', title: f.title, where: [], action: f.detail, id: f.id });
   for (const f of knownSerious) blockers.push({ kind: 'known', title: f.title, where: [], action: f.detail, id: f.id });
   for (const f of mismatch) blockers.push({ kind: 'mismatch', title: f.title, where: [], action: f.detail, id: f.id });
 
   const notes = [];
+  for (const c of libraryReviews) notes.push({ kind: 'library-js', title: `${c.title}: a dependency still uses it, so its components named here lose their layout`, where: c.libraries, action: 'Check whether you use those components; update the library if a release fixes it, or patch it.', version: c.version, source: c.source });
   for (const c of behavior) notes.push({ kind: 'behavior', title: c.title, where: c.hits, action: c.action, version: c.version, source: c.source });
   for (const f of knownMinor) notes.push({ kind: 'known', title: f.title, where: [], action: f.detail, id: f.id });
   if (newArch) notes.push({ kind: 'new-arch', title: newArch.title, where: [], action: newArch.detail, id: newArch.id });
@@ -87,7 +97,6 @@ export function upgradeReport(result) {
     `Breaking changes are matched from NativeKeel's catalog for the versions ahead of you (up to ${isExpo ? `Expo SDK ${NEXT.expo.sdk}` : `React Native 0.${NEXT.rn.minor}`}); a change not in the catalog is not reported.`,
   ];
   if (coverage === 'partial') cantKnow.unshift(`This is a multi-version jump. NativeKeel's catalog covers the breaking changes from ${coveredFrom} onward; the earlier steps between your version and there have their own breaking changes that are not evaluated here. Upgrade one version at a time and re-run — see \`nativekeel plan\` for the staged path.`);
-  if (unsupported.length) cantKnow.unshift(...unsupported.map((f) => f.title));
 
   return {
     from: { reactNative: fromRn, expo: result.project.expo || null },
@@ -97,6 +106,8 @@ export function upgradeReport(result) {
     blockers,
     notes,
     tooling: toolingItems,
+    // End of support is a known fact, not a limit of the scan: shown with the verdict.
+    support: unsupported.map((f) => f.title),
     cantKnow,
     counts: { blockers: blockers.length, notes: notes.length, tooling: toolingItems.length },
   };
@@ -130,14 +141,21 @@ export function upgradeText(report, { color } = {}) {
       : c.green('READY — no blockers found in your code');
   out.push(`${c.bold(`Upgrade  ${fromLabel} → ${toLabel}`)}`);
   out.push(`  ${verdict}${report.counts.notes || report.counts.tooling ? c.gray(`  ·  ${report.counts.notes} behavior change${report.counts.notes === 1 ? '' : 's'}, ${report.counts.tooling} tooling change${report.counts.tooling === 1 ? '' : 's'} to review`) : ''}`);
+  for (const t of report.support || []) out.push(`  ${c.yellow('!')} ${t}`);
   out.push('');
 
   if (report.blockers.length) {
     out.push(c.bold('Blockers (fix before upgrading)'));
     for (const b of report.blockers) {
-      const tag = { code: 'code', 'library-ios-build': 'iOS build', 'library-interop': 'native module', known: 'known trap', mismatch: 'version mismatch' }[b.kind] || b.kind;
+      const tag = { code: 'code', 'library-js': 'library', 'library-ios-build': 'iOS build', 'library-interop': 'native module', known: 'known trap', mismatch: 'version mismatch' }[b.kind] || b.kind;
       out.push(`  ${c.red('✗')} [${tag}${b.version ? ` · ${b.version}` : ''}] ${b.title}${where(b.where)}`);
-      if (b.action) out.push(c.gray(`      ${b.action.length > 240 ? b.action.slice(0, 237) + '…' : b.action}`));
+      if (b.action) {
+        // Shorten long prose, never the guide link at its end: a cut URL is useless.
+        const m = b.action.match(/^(.*?)\s*(https?:\/\/\S+)$/s);
+        const prose = m ? m[1] : b.action;
+        const short = prose.length > 240 ? prose.slice(0, 237) + '…' : prose;
+        out.push(c.gray(`      ${short}${m ? ` ${m[2]}` : ''}`));
+      }
     }
     out.push('');
   }
@@ -153,5 +171,9 @@ export function upgradeText(report, { color } = {}) {
   }
   out.push(c.gray('What this cannot confirm:'));
   for (const k of report.cantKnow) out.push(c.gray(`  - ${k}`));
+  if (report.status === 'blocked' || report.status === 'partial') {
+    out.push('');
+    out.push(`Rather hand the upgrade over? We take on a few at a time: send this output to ${c.bold(CONTACT_EMAIL)} for a fixed quote.`);
+  }
   return out.join('\n');
 }
