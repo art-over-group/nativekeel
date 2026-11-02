@@ -375,7 +375,7 @@ If the call is inside a library rather than your code, update the library; patch
 
 **Check your project.** \`npx nativekeel\` lists the files that use \`InteractionManager\`: before the upgrade as work for 0.87, and after it as a crash with the file and line.
 `,
-    sources: [['React Native 0.87 release notes: API removals', 'https://reactnative.dev/blog/2026/08/11/react-native-0.87#api-removals'], ['React Native 0.87.1 index.js (the development error)', 'https://github.com/facebook/react-native/blob/v0.87.1/packages/react-native/index.js']],
+    sources: [['React Native 0.87 release notes: API removals', 'https://reactnative.dev/blog/2026/08/11/react-native-0.87#api-removals'], ['React Native 0.87.1 index.js (the development error)', 'https://github.com/facebook/react-native/blob/v0.87.1/packages/react-native/index.js'], ['Which libraries still call it: 29 popular React Native libraries checked (dev.to)', 'https://dev.to/keel_alican_akyol/your-code-is-clean-your-libraries-arent-29-popular-react-native-libraries-still-call-apis-21cf']],
   },
   {
     slug: 'rctcomponent-h-file-not-found-react-native-0-87',
@@ -565,7 +565,7 @@ Enable the Sign in with Apple capability for the app ID, show Apple's button nex
   },
   {
     slug: 'google-play-target-api-level',
-    updated: '2026-10-18',
+    updated: '2026-10-24',
     error: 'Your app currently targets API level 34 and must target at least API level 36',
     title: 'Google Play "must target at least API level": React Native',
     description: 'What Google Play\'s target API level error means for React Native and Expo apps in 2026, the deadlines, and what usually breaks when you raise targetSdk.',
@@ -578,7 +578,7 @@ Your app currently targets API level 34 and must target at least API level 36 to
 
 **The rule in 2026.** Since 31 August 2026, new apps and app updates must target Android 16 (API level 36). Existing apps must target at least Android 15 (API level 35) to stay available to new users on newer Android versions. Apps that requested an extension have until 1 November 2026; after that, updates need API 36.
 
-**How to fix it in React Native.** Set \`targetSdkVersion = 36\` and \`compileSdkVersion = 36\` in \`android/build.gradle\` (Expo: use the SDK that targets it, or \`expo-build-properties\`). Then check what changes with each API level you skip:
+**How to fix it in React Native.** Set \`targetSdkVersion = 36\` and \`compileSdkVersion = 36\` in \`android/build.gradle\` (Expo: use the SDK that targets it, or \`expo-build-properties\`; an old \`targetSdkVersion\` pinned there keeps the app below 36 even after an SDK upgrade, so check its plugin options). Then check what changes with each API level you skip:
 
 - Target 31: components with an intent filter need \`android:exported\`, or the build fails ([details](/fix/android-exported)).
 - Target 34: foreground services must declare their type, or the app crashes when one starts ([details](/fix/missing-foreground-service-type)).
@@ -687,6 +687,217 @@ Then run prebuild again. SDK 58 has it by default. SDK 56 and earlier need an up
       ['Expo: Xcode 27 support for SDK 57', 'https://github.com/expo/expo/issues/46664#issuecomment-5683396867'],
     ],
   },
+  {
+    slug: 'cve-2025-11953-react-native-metro',
+    updated: '2026-10-23',
+    error: 'CVE-2025-11953 (Metro4Shell) in React Native',
+    title: 'CVE-2025-11953 (Metro4Shell): check your React Native app',
+    description: 'Metro dev server command injection (CVSS 9.8, exploited in the wild). Which @react-native-community/cli versions are affected, and how to check and fix.',
+    body: `
+CVE-2025-11953 is a critical flaw in the Metro development server that \`npx react-native start\` runs. The server binds to external network interfaces by default and has an endpoint, \`/open-url\`, that passes part of a POST request to an operating-system \`open\` call. Anyone who can reach the server, on the same network or from a web page, can run programs on the developer's machine; on Windows, shell commands with any arguments. It is rated **9.8 (critical)** and is in CISA's Known Exploited Vulnerabilities catalog since 5 February 2026.
+
+**What it affects.** Developer machines and CI runners that start the bundler, not the app you ship to users.
+
+**Affected versions** (official CVE record and GitHub advisory GHSA-399j-vxmf-hjvr; the same ranges for \`@react-native-community/cli\` and \`@react-native-community/cli-server-api\`):
+
+| Version line | Affected | Fixed in |
+|---|---|---|
+| 18.x | 18.0.0 | 18.0.1 |
+| 19.x | 19.0.0 to 19.1.1 | 19.1.2 |
+| 20.x | 20.0.0 alpha releases | 20.0.0 |
+
+**Check your project.** The CLI usually comes in through \`react-native\`, so your package.json does not name it. Ask the package manager which version is installed:
+
+\`\`\`
+npm ls @react-native-community/cli-server-api
+yarn why @react-native-community/cli-server-api
+pnpm why @react-native-community/cli-server-api
+\`\`\`
+
+\`npx nativekeel\` reads the exact versions resolved in your lockfile and \`node_modules\`, transitive copies included, and reports this as a critical finding when one of them is affected.
+
+**Fix.** Move to the fixed release of the line you are on (18.0.1, 19.1.2 or 20.0.0), then reinstall. If it comes in through \`react-native\`, force it with your package manager:
+
+\`\`\`
+// package.json, npm
+"overrides": { "@react-native-community/cli-server-api": "19.1.2" }
+
+// package.json, Yarn
+"resolutions": { "@react-native-community/cli-server-api": "19.1.2" }
+
+// package.json, pnpm
+"pnpm": { "overrides": { "@react-native-community/cli-server-api": "19.1.2" } }
+\`\`\`
+
+Use the version from your own line (the table above), not a newer major. Run \`npm ls\` again to confirm no affected copy is left.
+
+**Until you can update,** start Metro on localhost only, so other machines cannot reach it:
+
+\`\`\`
+npx react-native start --host 127.0.0.1
+\`\`\`
+`,
+    sources: [['NVD: CVE-2025-11953', 'https://nvd.nist.gov/vuln/detail/CVE-2025-11953'], ['GitHub advisory GHSA-399j-vxmf-hjvr', 'https://github.com/advisories/GHSA-399j-vxmf-hjvr'], ['JFrog: the research and the localhost workaround', 'https://jfrog.com/blog/cve-2025-11953-critical-react-native-community-cli-vulnerability/'], ['CISA Known Exploited Vulnerabilities catalog', 'https://www.cisa.gov/known-exploited-vulnerabilities-catalog']],
+  },
+  {
+    slug: 'stylesheet-absolutefillobject-removed-react-native-0-85',
+    updated: '2026-10-23',
+    error: 'StyleSheet.absoluteFillObject removed in React Native 0.85',
+    title: 'StyleSheet.absoluteFillObject removed in React Native 0.85',
+    description: 'React Native 0.85 removed StyleSheet.absoluteFillObject. Overlays silently lose their layout in JavaScript and TypeScript fails to build: the one-line fix.',
+    body: `
+React Native 0.85 removed \`StyleSheet.absoluteFillObject\`, deprecated since earlier releases. The release notes put it under breaking changes: "The deprecated \`StyleSheet.absoluteFillObject\` API has been removed. Use \`StyleSheet.absoluteFill\` or define your own absolute positioning styles instead."
+
+**Why it is easy to miss.** React Native 0.85 has no error or warning for it: the property is simply gone, so it reads as \`undefined\`.
+
+- In **TypeScript**, the build fails: \`absoluteFillObject\` no longer exists on \`StyleSheet\` in the 0.85 type definitions.
+- In **JavaScript**, nothing fails. \`{ ...StyleSheet.absoluteFillObject, top: 10 }\` spreads \`undefined\`, which adds nothing, so the style quietly loses \`position: 'absolute'\` and its edges. Overlays, backdrops and full-screen layers stop covering their parent, and it shows up only on screen.
+
+**Fix.** \`StyleSheet.absoluteFill\` is now a plain style object with the same values (\`position: 'absolute'\`, \`top\`, \`right\`, \`bottom\` and \`left\` at 0), so it can be spread the same way. React Native's own type tests made exactly this change.
+
+\`\`\`
+- overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
++ overlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.5)' },
+
+- <View style={StyleSheet.absoluteFillObject} />
++ <View style={StyleSheet.absoluteFill} />
+\`\`\`
+
+Search the project for \`absoluteFillObject\`, including code that libraries you patched contain. A library that still uses it needs an update.
+
+**Check before you upgrade.** \`npx nativekeel upgrade\` lists every file that uses \`absoluteFillObject\` when your app is on React Native 0.84 or earlier, with the other changes between your version and the newest one. In our scan of 1,162 open-source React Native projects, 146 that are still on 0.84 or earlier use it.
+`,
+    sources: [['React Native 0.85 release notes: breaking changes', 'https://reactnative.dev/blog/2026/04/07/react-native-0.85'], ['React Native 0.85.0 StyleSheetExports.js', 'https://github.com/facebook/react-native/blob/v0.85.0/packages/react-native/Libraries/StyleSheet/StyleSheetExports.js'], ['React Native 0.84.0 StyleSheet.d.ts (deprecated there)', 'https://github.com/facebook/react-native/blob/v0.84.0/packages/react-native/Libraries/StyleSheet/StyleSheet.d.ts'], ['Which libraries still call it: 29 popular React Native libraries checked (dev.to)', 'https://dev.to/keel_alican_akyol/your-code-is-clean-your-libraries-arent-29-popular-react-native-libraries-still-call-apis-21cf']],
+  },
+  {
+    slug: 'statusbar-backgroundcolor-translucent-removed-react-native-0-87',
+    updated: '2026-10-23',
+    error: 'StatusBar backgroundColor and translucent removed in React Native 0.87',
+    title: 'StatusBar backgroundColor, translucent removed in RN 0.87',
+    description: 'React Native 0.87 removed StatusBar backgroundColor, translucent and their setters. Props are ignored, setter calls now crash. What to use instead.',
+    body: `
+React Native 0.87 removed three \`StatusBar\` props and their setter methods. The release notes list it under API removals: "Removed deprecated \`StatusBar\` \`backgroundColor\` / \`translucent\` / \`networkActivityIndicatorVisible\` props and their setter methods."
+
+**What happens after the upgrade.** The two ways of using them fail differently:
+
+- **As props** (\`<StatusBar backgroundColor="#0b5d55" translucent />\`): React Native 0.87 no longer reads them, so they are silently ignored. TypeScript fails the build, because the props are gone from the type definitions.
+- **As setters** (\`StatusBar.setBackgroundColor(...)\`, \`StatusBar.setTranslucent(...)\`, \`StatusBar.setNetworkActivityIndicatorVisible(...)\`): the methods no longer exist, so the call throws a \`TypeError\` (it is not a function). In a development build that is a red screen; in a release build the screen or the app crashes where the call runs.
+
+**Why they went.** On Android 15, apps that target API level 35 or higher are drawn edge-to-edge: the status bar is transparent, content draws behind it, and the system ignores the status bar colour (\`setStatusBarColor\` is deprecated and has no effect). Google Play requires a target of API 35 or higher, so these props had already stopped doing anything on current Android.
+
+**Fix.**
+
+- Remove \`backgroundColor\`, \`translucent\` and \`networkActivityIndicatorVisible\` from every \`StatusBar\` imported from \`react-native\`, and delete the setter calls.
+- Keep \`barStyle\` (and \`StatusBar.setBarStyle\`): it still sets light or dark status bar icons.
+- To colour the area behind the status bar, draw it yourself, using the top inset from react-native-safe-area-context:
+
+\`\`\`
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+function Screen({ children }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: '#0b5d55' }}>
+      <StatusBar barStyle="light-content" />
+      {children}
+    </View>
+  );
+}
+\`\`\`
+
+Search the project for \`setBackgroundColor\`, \`setTranslucent\` and \`setNetworkActivityIndicatorVisible\` first: those are the calls that crash.
+
+**Check before you upgrade.** \`npx nativekeel upgrade\` lists the files that use these props or setters when your app is below React Native 0.87, with the other breaking changes between your version and the newest one. In our scan of 947 open-source React Native apps, 140 that are still below 0.87 use them.
+`,
+    sources: [['React Native 0.87 release notes: API removals', 'https://reactnative.dev/blog/2026/08/11/react-native-0.87'], ['React Native 0.87.1 StatusBar.js', 'https://github.com/facebook/react-native/blob/v0.87.1/packages/react-native/Libraries/Components/StatusBar/StatusBar.js'], ['React Native 0.86.0 StatusBar.js (the setters before removal)', 'https://github.com/facebook/react-native/blob/v0.86.0/packages/react-native/Libraries/Components/StatusBar/StatusBar.js'], ['Android 15 behavior changes: edge-to-edge enforcement', 'https://developer.android.com/about/versions/15/behavior-changes-15'], ['Which libraries still call it: 29 popular React Native libraries checked (dev.to)', 'https://dev.to/keel_alican_akyol/your-code-is-clean-your-libraries-arent-29-popular-react-native-libraries-still-call-apis-21cf']],
+  },
+  {
+    slug: 'expo-file-system-file-write-async-sdk-58',
+    updated: '2026-10-23',
+    error: 'expo-file-system File.write() is async in Expo SDK 58',
+    title: 'expo-file-system File.write() is now async in Expo SDK 58',
+    description: 'In Expo SDK 58, File.write() returns a promise and File.md5 is deprecated. Code still compiles, but reads can race the write and try/catch misses errors.',
+    body: `
+Expo SDK 58 changed the \`File\` class of expo-file-system. The release notes list it under breaking changes: "\`File.write()\` is now async and returns a promise; use \`File.writeSync()\` for the previous behavior." They also deprecate \`File.md5\` in favour of \`File.digest()\`.
+
+**Why it is easy to miss.** In SDK 57, \`write()\` returned \`void\`; in SDK 58 it returns \`Promise<void>\`. Calling a function that returns a promise without \`await\` is still valid TypeScript, so the project compiles and nothing warns you. What changes is behaviour:
+
+- **The next line can run before the file is written.** Code that writes and then reads, uploads, shares or hashes the file in the same function can see the old content, or no file at all, depending on timing.
+- **Errors escape your try/catch.** A failing write (full disk, a bad path) used to throw where you called it. Now it rejects the promise; if nobody awaits it, the \`try/catch\` around it never sees the error and it surfaces as an unhandled promise rejection.
+
+**Fix.** Await the write, or keep the old synchronous behaviour where you depend on it:
+
+\`\`\`
+const file = new File(Paths.document, 'cache.json');
+
+- file.write(JSON.stringify(data));
+- upload(file.uri);
++ await file.write(JSON.stringify(data));
++ upload(file.uri);
+
+// or, where the call must stay synchronous:
++ file.writeSync(JSON.stringify(data));
+\`\`\`
+
+For checksums, \`File.md5\` still works but is deprecated. Its replacement is a promise too, and supports more algorithms (MD5, SHA-1, SHA-256, SHA-384, SHA-512):
+
+\`\`\`
+- const hash = file.md5;
++ const hash = await file.digest('MD5');
+\`\`\`
+
+To find calls that drop a promise anywhere in the project, the \`@typescript-eslint/no-floating-promises\` lint rule reports them.
+
+**Check before you upgrade.** \`npx nativekeel upgrade\` lists the files that write with the expo-file-system \`File\` class or read \`.md5\` when your app is below Expo SDK 58, with the other breaking changes between your SDK and the newest one. In our scan of 947 open-source React Native apps, 65 that are still below SDK 58 use them.
+`,
+    sources: [['Expo SDK 58 release notes', 'https://expo.dev/changelog/sdk-58'], ['expo-file-system 58.0.10 type definitions (write, writeSync, digest)', 'https://www.npmjs.com/package/expo-file-system/v/58.0.10?activeTab=code'], ['expo-file-system documentation', 'https://docs.expo.dev/versions/latest/sdk/filesystem/']],
+  },
+  {
+    slug: 'expo-router-sdk-58-initialroutename-freezeonblur-beforeremove',
+    updated: '2026-10-23',
+    error: 'Expo Router SDK 58: initialRouteName, freezeOnBlur and beforeRemove',
+    title: 'Expo Router SDK 58: initialRouteName and beforeRemove gone',
+    description: 'Expo SDK 58 reworked the Expo Router navigation core. initialRouteName, freezeOnBlur and beforeRemove stop working without an error: what replaces each.',
+    body: `
+Expo SDK 58 reworked the navigation core of Expo Router: "navigation state is deterministic and easier to reason about", and the router "no longer carries most of the forked React Navigation API". The release notes say most apps won't notice. The ones that do usually hit one of the changes below, and none of them shows an error: the old option is simply ignored.
+
+**\`initialRouteName\` is removed,** both in \`unstable_settings\` and as a prop on a layout's navigator. It was in Expo's own app template (\`export const unstable_settings = { initialRouteName: '(tabs)' }\`), so many apps have it. Replace it with an anchor, which adds a back destination below a deep-linked screen:
+
+\`\`\`
+- export const unstable_settings = { initialRouteName: '(tabs)' };
++ export const unstable_settings = { anchor: '(tabs)' };
+
+- return <Stack initialRouteName="index" />;
++ return <Stack />;
+\`\`\`
+
+Do not use the anchor to choose the first screen: the launch URL decides that. When you navigate in code and want the anchor inserted below the destination, pass \`{ withAnchor: true }\`.
+
+**\`beforeRemove\` is removed.** A listener on it (the usual "discard unsaved changes?" prompt) no longer fires, so the user leaves without being asked. Use \`usePreventRemove\` from \`expo-router\`; its callback receives \`repeat\`, which continues the navigation that was blocked:
+
+\`\`\`
+import { usePreventRemove } from 'expo-router';
+
+usePreventRemove(hasUnsavedChanges, ({ repeat }) => {
+  confirmDiscard(() => {
+    setHasUnsavedChanges(false);
+    repeat();
+  });
+});
+\`\`\`
+
+To navigate somewhere else instead, keep the \`disablePrevention\` function the hook returns: set the condition to \`false\`, call \`disablePrevention()\`, then navigate.
+
+**\`freezeOnBlur\` has no effect.** Screens are no longer frozen in the background. Use \`activityEnabled\` on the navigator or a screen (\`true\`, or a number that sets the threshold on stacks), or wrap part of a screen in \`NavigationAwareActivity\`.
+
+**Layout \`Screen\` props \`redirect\`, \`initialParams\` and \`navigationKey\` are removed.** Use a \`Redirect\` route, or \`Stack.Protected\` with \`redirectTo\`, and default values inside the screen instead of \`initialParams\`.
+
+**Also in the guide:** nested navigation with \`navigate('(tabs)', { screen: 'feed', params })\` no longer works (navigate to a complete href with \`useRouter().push({ pathname, params })\`), parent route params are no longer copied into child routes, \`useNavigation\` throws outside a navigator, and tabs and drawers only show screens declared in the layout (\`options={{ href: null }}\` hides a route). Imports from \`expo-router/react-navigation\` lost many exports; the guide has a table with the replacement for each.
+
+**Check before you upgrade.** \`npx nativekeel upgrade\` lists each of these with file and line when your app uses Expo Router below SDK 58. In our scan of 401 open-source apps that use Expo Router below SDK 58, 78 still set \`initialRouteName\`, 16 listen to \`beforeRemove\` and 16 use \`freezeOnBlur\`.
+`,
+    sources: [['Expo SDK 58 release notes', 'https://expo.dev/changelog/sdk-58'], ['Expo Router: migrate from SDK 57 to SDK 58', 'https://docs.expo.dev/router/migrate/sdk-57-to-58/'], ['expo-router changelog', 'https://github.com/expo/expo/blob/main/packages/expo-router/CHANGELOG.md']],
+  },
 ];
 
 const STYLE = `:root{--bg:#fbfaf7;--text:#15171b;--muted:#5d6470;--accent:#0b5d55;--line:#e3e1db;--card:#ffffff;--code:#f1efea}
@@ -733,7 +944,7 @@ for (const p of PAGES) {
 <h1>${esc(p.error)}</h1>
 <p class="meta">Updated ${p.updated || UPDATED}</p>
 ${md(p.body)}
-<div class="cta"><strong>Check your whole app in one command:</strong> <code>npx nativekeel</code><br><span class="meta">Free, runs locally (your code is not uploaded), no account. It reports this along with the other upgrade, store, crash and security problems it checks for.</span></div>
+<div class="cta"><strong>Check your whole app in one command:</strong> <code>npx nativekeel</code><br><span class="meta">Free, runs locally (your code is not uploaded), no account. It reports this along with the other upgrade, store, crash and security problems it checks for.</span><br><span class="meta">Rather hand the upgrade over? The engineer behind NativeKeel takes on a few upgrades at a time: send your report to <a href="mailto:hello@nativekeel.com?subject=React%20Native%20upgrade">hello@nativekeel.com</a> for a fixed quote.</span></div>
 <h2>Sources</h2>
 <ul>${p.sources.map(([t, u]) => `<li><a href="${u}">${esc(t)}</a></li>`).join('')}</ul>
 <script type="application/ld+json">${JSON.stringify(ld).replace(/</g, '\\u003c')}</script>
